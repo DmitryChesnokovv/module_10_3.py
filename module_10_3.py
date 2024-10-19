@@ -7,6 +7,7 @@ class Bank:
     def __init__(self):
         self.balance = 0
         self.lock = threading.Lock()
+        self.balance_condition = threading.Condition(self.lock)
 
     def deposit(self):
         for _ in range(100):
@@ -14,28 +15,27 @@ class Bank:
             with self.lock:
                 self.balance += amount
                 print(f"Пополнение: {amount}. Баланс: {self.balance}")
-                if self.balance >= 500 and self.lock.locked():
-                    self.lock.release()
+                if self.balance >= 500:
+                    self.balance_condition.notify_all()
             sleep(0.001)
 
     def take(self):
         for _ in range(100):
             amount = randint(50, 500)
             print(f"Запрос на {amount}")
-            with self.lock:
-                if amount <= self.balance:
-                    self.balance -= amount
-                    print(f"Снятие: {amount}. Баланс: {self.balance}")
-                else:
-                    print(f"Запрос отклонён, недостаточно средств")
-                    self.lock.acquire()
-            sleep(0.001)
 
+            with self.balance_condition:  # Работаем с условием
+                while amount > self.balance:
+                    print(f"Запрос отклонён, недостаточно средств. Ожидание пополнения...")
+                    self.balance_condition.wait()
+                self.balance -= amount
+                print(f"Снятие: {amount}. Баланс: {self.balance}")
+            sleep(0.001)
 
 bk = Bank()
 
-th1 = threading.Thread(target=Bank.deposit, args=(bk,))
-th2 = threading.Thread(target=Bank.take, args=(bk,))
+th1 = threading.Thread(target=bk.deposit)
+th2 = threading.Thread(target=bk.take)
 
 th1.start()
 th2.start()
